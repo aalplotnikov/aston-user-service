@@ -6,11 +6,11 @@ import org.hibernate.SessionFactory;
 
 import java.util.List;
 
-public class UserRepositoriy {
+public class UserRepository {
     private SessionFactory sessionFactory;
     private Session session;
 
-    public UserDAO(SessionFactory sessionFactory) {
+    public UserRepository(SessionFactory sessionFactory) {
         this.sessionFactory = sessionFactory;
     }
 

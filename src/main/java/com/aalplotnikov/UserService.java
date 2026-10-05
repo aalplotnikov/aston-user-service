@@ -2,11 +2,11 @@ package com.aalplotnikov;
 
 import java.util.Scanner;
 
-public class ConsoleService {
+public class UserService {
     private UserRepository userRepository;
     private Scanner scanner;
 
-    public ConsoleService(UserRepository userRepository) {
+    public UserService(UserRepository userRepository) {
         this.userRepository = userRepository;
         scanner = new Scanner(System.in);
     }
