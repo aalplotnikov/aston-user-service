@@ -1,12 +1,14 @@
 package com.aalplotnikov;
 
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
-import org.hibernate.cfg.Configuration;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
+import jakarta.persistence.EntityManager;
+
 import org.junit.jupiter.api.Test;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -15,110 +17,95 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@DataJpaTest(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 @Testcontainers
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 public class UserRepositoryTest {
+
     @Container
-    private static final PostgreSQLContainer postgresContainer = new PostgreSQLContainer("postgres:16")
-            .withDatabaseName("mydb")
-            .withUsername("postgres")
-            .withPassword("123");
+    @ServiceConnection
+    private static final PostgreSQLContainer postgresContainer =
+            new PostgreSQLContainer("postgres:16")
+                    .withDatabaseName("mydb")
+                    .withUsername("postgres")
+                    .withPassword("123");
 
-    private static SessionFactory sessionFactory;
-    private static UserRepository userRepository;
+    @Autowired
+    private UserRepository userRepository;
 
-    @BeforeAll
-    public static void setUp () {
-        sessionFactory = new Configuration()
-                .configure()
-                .setProperty("hibernate.connection.url", postgresContainer.getJdbcUrl())
-                .setProperty("hibernate.connection.username", postgresContainer.getUsername())
-                .setProperty("hibernate.connection.password", postgresContainer.getPassword())
-                .addAnnotatedClass(User.class)
-                .buildSessionFactory();
-        userRepository = new UserRepository(sessionFactory);
-    }
-
-    @AfterAll
-    public static void tearDown() {
-        if (sessionFactory != null) {
-            sessionFactory.close();
-        }
-    }
-
-    @AfterEach
-    public void cleanDatabase() {
-        try (Session session = sessionFactory.openSession()) {
-            session.beginTransaction();
-
-            session.createMutationQuery("delete from User")
-                    .executeUpdate();
-
-            session.getTransaction().commit();
-        }
-    }
+    @Autowired
+    private EntityManager entityManager;
 
     @Test
-    public void saveTest() {
+    void saveTest() {
         String name = "TestName";
         String email = "test@mail.ru";
         int age = 30;
 
         User userTest = new User(name, email, age);
-        User saved = userRepository.save(userTest);
+
+        User saved = userRepository.saveAndFlush(userTest);
+
         assertNotNull(saved);
+        assertNotNull(saved.getId());
 
-        try (Session session = sessionFactory.openSession()) {
-            User userLoaded = session.find(User.class, saved.getId());
-            assertNotNull(userLoaded);
-            assertEquals(saved.getId(), userLoaded.getId());
-            assertEquals(name, userLoaded.getName());
-            assertEquals(email, userLoaded.getEmail());
-            assertEquals(age, userLoaded.getAge());
-        }
-    }
+        entityManager.clear();
 
-    @Test
-    public void saveFieldsTest() {
-        String name = "TestName";
-        String email = "test@mail.ru";
-        int age = 30;
+        User userLoaded = userRepository.findById(saved.getId())
+                .orElseThrow();
 
-        User saved = userRepository.save(name, email, age);
-        assertNotNull(saved);
-
-        try (Session session = sessionFactory.openSession()) {
-            User userLoaded = session.find(User.class, saved.getId());
-            assertNotNull(userLoaded);
-            assertEquals(saved.getId(), userLoaded.getId());
-            assertEquals(name, userLoaded.getName());
-            assertEquals(email, userLoaded.getEmail());
-            assertEquals(age, userLoaded.getAge());
-        }
-    }
-
-    @Test
-    public void findByIdTest() {
-        String name = "TestName";
-        String email = "test@mail.ru";
-        int age = 30;
-
-        User userTest = new User(name, email, age);
-        try (Session session = sessionFactory.openSession()) {
-            session.beginTransaction();
-            session.persist(userTest);
-            session.getTransaction().commit();
-        }
-
-        User userLoaded = userRepository.findById(userTest.getId());
-        assertNotNull(userLoaded);
-        assertEquals(userTest.getId(), userLoaded.getId());
+        assertEquals(saved.getId(), userLoaded.getId());
         assertEquals(name, userLoaded.getName());
         assertEquals(email, userLoaded.getEmail());
         assertEquals(age, userLoaded.getAge());
     }
 
     @Test
-    public void updateTest() {
+    void saveFieldsTest() {
+        String name = "TestName";
+        String email = "test@mail.ru";
+        int age = 30;
+
+        User saved = userRepository.saveAndFlush(
+                new User(name, email, age)
+        );
+
+        assertNotNull(saved.getId());
+
+        entityManager.clear();
+
+        User userLoaded = userRepository.findById(saved.getId())
+                .orElseThrow();
+
+        assertEquals(name, userLoaded.getName());
+        assertEquals(email, userLoaded.getEmail());
+        assertEquals(age, userLoaded.getAge());
+        assertNotNull(userLoaded.getCreatedAt());
+    }
+
+    @Test
+    void findByIdTest() {
+        String name = "TestName";
+        String email = "test@mail.ru";
+        int age = 30;
+
+        User userTest = new User(name, email, age);
+
+        User saved = userRepository.saveAndFlush(userTest);
+
+        entityManager.clear();
+
+        User userLoaded = userRepository.findById(saved.getId())
+                .orElseThrow();
+
+        assertEquals(saved.getId(), userLoaded.getId());
+        assertEquals(name, userLoaded.getName());
+        assertEquals(email, userLoaded.getEmail());
+        assertEquals(age, userLoaded.getAge());
+    }
+
+    @Test
+    void updateTest() {
         String name = "TestName";
         String email = "test@mail.ru";
         int age = 30;
@@ -128,87 +115,88 @@ public class UserRepositoryTest {
         int updateAge = 40;
 
         User userTest = new User(name, email, age);
-        try (Session session = sessionFactory.openSession()) {
-            session.beginTransaction();
-            session.persist(userTest);
-            session.getTransaction().commit();
-        }
 
-        User saved = userRepository.update(userTest.getId(), updateName, updateEmail, updateAge);
-        assertNotNull(saved);
+        User saved = userRepository.saveAndFlush(userTest);
 
-        try (Session session = sessionFactory.openSession()) {
-            User userLoaded = session.find(User.class, userTest.getId());
-            assertNotNull(userLoaded);
-            assertEquals(userTest.getId(), userLoaded.getId());
-            assertEquals(updateName, userLoaded.getName());
-            assertEquals(updateEmail, userLoaded.getEmail());
-            assertEquals(updateAge, userLoaded.getAge());
-        }
+        Long id = saved.getId();
+
+        saved.setName(updateName);
+        saved.setEmail(updateEmail);
+        saved.setAge(updateAge);
+
+        userRepository.saveAndFlush(saved);
+
+        entityManager.clear();
+
+        User userLoaded = userRepository.findById(id)
+                .orElseThrow();
+
+        assertEquals(id, userLoaded.getId());
+        assertEquals(updateName, userLoaded.getName());
+        assertEquals(updateEmail, userLoaded.getEmail());
+        assertEquals(updateAge, userLoaded.getAge());
     }
 
     @Test
-    public void deleteTest() {
+    void deleteTest() {
         String name = "TestName";
         String email = "test@mail.ru";
         int age = 30;
 
         User userTest = new User(name, email, age);
-        try (Session session = sessionFactory.openSession()) {
-            session.beginTransaction();
-            session.persist(userTest);
-            session.getTransaction().commit();
-        }
 
-        User deleted = userRepository.delete(userTest.getId());
-        assertNotNull(deleted);
-        assertEquals(userTest.getId(), deleted.getId());
-        assertEquals(name, deleted.getName());
-        assertEquals(email, deleted.getEmail());
-        assertEquals(age, deleted.getAge());
+        User saved = userRepository.saveAndFlush(userTest);
 
-        try (Session session = sessionFactory.openSession()) {
-            User userLoaded = session.find(User.class, userTest.getId());
-            assertNull(userLoaded);
-        }
+        Long id = saved.getId();
+
+        userRepository.deleteById(id);
+        userRepository.flush();
+
+        entityManager.clear();
+
+        assertFalse(userRepository.existsById(id));
+        assertTrue(userRepository.findById(id).isEmpty());
     }
 
     @Test
-    public void findAllTest() {
+    void findAllTest() {
         String name = "TestName";
         String email = "test@mail.ru";
         int age = 30;
+
         String nameOther = "OtherTestName";
         String emailOther = "Othertest@mail.ru";
         int ageOther = 40;
 
-        int size = 2;
-
         User userTest = new User(name, email, age);
         User userOtherTest = new User(nameOther, emailOther, ageOther);
-        try (Session session = sessionFactory.openSession()) {
-            session.beginTransaction();
-            session.persist(userTest);
-            session.persist(userOtherTest);
-            session.getTransaction().commit();
-        }
+
+        User savedFirst = userRepository.save(userTest);
+        User savedSecond = userRepository.save(userOtherTest);
+
+        userRepository.flush();
+        entityManager.clear();
 
         List<User> userList = userRepository.findAll();
+
         assertNotNull(userList);
-        assertEquals(size, userList.size());
+        assertEquals(2, userList.size());
+
         assertTrue(userList.stream()
-                .anyMatch(user -> user.getId().equals(userTest.getId())
-                        && user.getName().equals(userTest.getName())
-                        && user.getEmail().equals(userTest.getEmail())
-                        && user.getAge() == userTest.getAge()
+                .anyMatch(user ->
+                        user.getId().equals(savedFirst.getId())
+                                && user.getName().equals(name)
+                                && user.getEmail().equals(email)
+                                && user.getAge() == age
                 )
         );
 
         assertTrue(userList.stream()
-                .anyMatch(user -> user.getId().equals(userOtherTest.getId())
-                        && user.getName().equals(userOtherTest.getName())
-                        && user.getEmail().equals(userOtherTest.getEmail())
-                        && user.getAge() == userOtherTest.getAge()
+                .anyMatch(user ->
+                        user.getId().equals(savedSecond.getId())
+                                && user.getName().equals(nameOther)
+                                && user.getEmail().equals(emailOther)
+                                && user.getAge() == ageOther
                 )
         );
     }

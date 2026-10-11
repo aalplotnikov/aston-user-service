@@ -1,18 +1,19 @@
 package com.aalplotnikov;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import com.aalplotnikov.DTO.UserRequestDTO;
+import com.aalplotnikov.DTO.UserResponseDTO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 public class UserServiceTest {
@@ -20,17 +21,8 @@ public class UserServiceTest {
     @Mock
     private UserRepository userRepository;
 
-    private InputStream originalIn;
-
-    @BeforeEach
-    void setUp() {
-        originalIn = System.in;
-    }
-
-    @AfterEach
-    void tearDown() {
-        System.setIn(originalIn);
-    }
+    @InjectMocks
+    private UserService userService;
 
     @Test
     void saveTest() {
@@ -38,81 +30,87 @@ public class UserServiceTest {
         String email = "test@mail.ru";
         int age = 30;
 
-        String input = String.join("\n", "Create", name, email, String.valueOf(age), "Q", "");
-
-        System.setIn(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)));
-
-        UserService userService = new UserService(userRepository);
-
+        UserRequestDTO request = new UserRequestDTO(name, email, age);
         User user = new User(name, email, age);
-        when(userRepository.save(name, email, age)).thenReturn(user);
 
-        userService.start();
+        when(userRepository.save(any(User.class))).thenReturn(user);
 
-        verify(userRepository).save(name, email, age);
+        UserResponseDTO result = userService.save(request);
+
+        assertEquals(name, result.name());
+        assertEquals(email, result.email());
+        assertEquals(age, result.age());
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+
+        verify(userRepository).save(captor.capture());
+
+        User savedUser = captor.getValue();
+
+        assertEquals(name, savedUser.getName());
+        assertEquals(email, savedUser.getEmail());
+        assertEquals(age, savedUser.getAge());
     }
 
     @Test
     void findByIdTest() {
-        long id = 1L;
+        Long id = 1L;
         String name = "TestName";
         String email = "test@mail.ru";
         int age = 30;
 
-        String input = String.join("\n", "Read", String.valueOf(id), "Q", "");
-
-        System.setIn(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)));
-
-        UserService userService = new UserService(userRepository);
-
         User user = new User(name, email, age);
-        when(userRepository.findById(id)).thenReturn(user);
 
-        userService.start();
+        when(userRepository.findById(id))
+                .thenReturn(Optional.of(user));
+
+        UserResponseDTO result = userService.findById(id);
+
+        assertEquals(name, result.name());
+        assertEquals(email, result.email());
+        assertEquals(age, result.age());
 
         verify(userRepository).findById(id);
     }
 
     @Test
     void updateTest() {
-        long id = 1L;
+        Long id = 1L;
+
         String name = "UpdatedName";
         String email = "updated@mail.ru";
         int age = 40;
 
-        String input = String.join("\n", "Update", String.valueOf(id),
-                name, email, String.valueOf(age), "Q", "");
+        User existingUser = new User("OldName", "old@mail.ru", 25);
 
-        System.setIn(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)));
+        UserRequestDTO request = new UserRequestDTO(name, email, age);
 
-        UserService userService = new UserService(userRepository);
+        when(userRepository.findById(id))
+                .thenReturn(Optional.of(existingUser));
 
-        User updated = new User(name, email, age);
-        when(userRepository.update(id, name, email, age)).thenReturn(updated);
+        when(userRepository.save(any(User.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
-        userService.start();
+        UserResponseDTO result = userService.update(id, request);
 
-        verify(userRepository).update(id, name, email, age);
+        assertEquals(name, result.name());
+        assertEquals(email, result.email());
+        assertEquals(age, result.age());
+
+        verify(userRepository).findById(id);
+        verify(userRepository).save(existingUser);
+
+        assertEquals(name, existingUser.getName());
+        assertEquals(email, existingUser.getEmail());
+        assertEquals(age, existingUser.getAge());
     }
 
     @Test
     void deleteTest() {
-        long id = 1L;
-        String name = "TestName";
-        String email = "test@mail.ru";
-        int age = 30;
+        Long id = 1L;
 
-        String input = String.join("\n", "Delete", String.valueOf(id), "Q", "");
+        userService.delete(id);
 
-        System.setIn(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)));
-
-        UserService userService = new UserService(userRepository);
-
-        User deleted = new User(name, email, age);
-        when(userRepository.delete(id)).thenReturn(deleted);
-
-        userService.start();
-
-        verify(userRepository).delete(id);
+        verify(userRepository).deleteById(id);
     }
 }
